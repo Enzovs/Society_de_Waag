@@ -1,4 +1,4 @@
-setwd("C:/Users/Win7/Desktop/HVA TWK/JAAR 3/Minor/Project de waag")
+# setwd("C:/Users/Win7/Desktop/HVA TWK/JAAR 3/Minor/Project de waag")
 library(lubridate)
 library(shiny)
 library(shinydashboard)
@@ -9,8 +9,6 @@ library(ggmap)
 library(dplyr)
 library(leaflet)
 library(timevis)
-library(rgdal)
-library(weatherData)
 library(plotly)
 # STN      LON(east)   LAT(north)     ALT(m)  NAME
 # 240:         4.774       52.301      -4.40  SCHIPHOL
