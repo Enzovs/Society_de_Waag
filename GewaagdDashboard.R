@@ -65,22 +65,26 @@ ui <- dashboardPage(
   dashboardHeader(title = "Gewaagd Dashboard", titleWidth = 250),
   dashboardSidebar(sidebarMenu(
     menuItem("Dashboard", tabName = "Overview", icon = icon("dashboard")),
-    menuItem("nox", icon = icon("th"), tabName = "NO2",
+    menuItem("Advanced", icon = icon("th"), tabName = "Advanced",
              badgeLabel = "new", badgeColor = "green"),
-    menuItem("Fijnstof", tabName = "PM", icon = icon("dashboard")),
-    menuItem("MathWizz", tabName = "MathFAQ", icon = icon("dashboard")))),
+    menuItem("MathFact", tabName = "MathFACT", icon = icon("dashboard")),
+    menuItem("Feedback", tabName = "Feedback", icon = icon("dashboard")))),
   dashboardBody(    
     tabItems(
       tabItem(tabName="Overview",
-        sidebarLayout(fluid=FALSE,
-          mainPanel(width = 7,
+        sidebarLayout(
+          mainPanel(
             verticalLayout(
-              plotOutput("weather"),
+              splitLayout(
+                valueBoxOutput("WindRBox",width="25%"),
+                valueBoxOutput("WindKBox",width="25%"),
+                valueBoxOutput("TempBox",width="25%"),
+                valueBoxOutput("RegenBox",width="25%")),
               leafletOutput("leaf"),
               timevisOutput("timeline")
               )
           ),
-       sidebarPanel(width = 5,
+       sidebarPanel(
          verticalLayout(
           sliderInput("slider", "Size of Dot:", 1, 10, 1),
           dateRangeInput("ana", "Kies periode:",
@@ -89,16 +93,15 @@ ui <- dashboardPage(
                           min = 0, max = 24, 
                           value = c(0,24), step=1,
                           animate = animationOptions(loop = TRUE, interval = 1)),
-          plotlyOutput("NOXplot"),
           tags$textarea(id="foo", rows=3, cols=40, 
                             "Heeft u iets waargenomen? Plaats het in de tijdlijn!"),
           actionButton("readCom",label="Plaats opmerking")
        )
       )
     )
-),tabItem(tabName="NO2",fluidPage()),
-tabItem(tabName="PM",fluidPage()),
-tabItem(tabName="MathFAQ",fluidPage()))))
+),tabItem(tabName="Advanced",fluidPage()),
+tabItem(tabName="MathFACT",fluidPage()),
+tabItem(tabName="Feedback",fluidPage()))))
 
 server <- function(input, output, session) {
   loadData <- function() {
@@ -134,10 +137,29 @@ server <- function(input, output, session) {
       addCircles(radius = ~temp*input$slider, weight = 1, color = "Darkred") %>%
       fitBounds(~min(long), ~min(lat), ~max(long), ~max(lat))
   })
-  output$NOXplot <- renderPlotly({
-    p <- plot_ly(plotly::wind, t = ~werDat()$Windrichting, r = ~(werDat()$Windsnelheid/10),
-                          type = 'area',color=I("Darkred"))
-    layout(p, radialaxis = list(ticksuffix="m/s"),orientation = 270)
+  output$WindRBox <- renderValueBox({
+    valueBox(
+      paste0(round(mean((weerDat$Windrichting/10), na.rm = TRUE),2)), "Windrichting", icon = icon("direction", lib = "glyphicon"),
+      color = "maroon"
+    )
+  })
+  output$WindKBox <- renderValueBox({
+    valueBox(
+      paste0(round(mean((weerDat$Windsnelheid/10), na.rm = TRUE),2)), "Windkracht", icon = icon("f0b2", lib = "font-awesome"),
+      color = "maroon"
+    )
+  })
+  output$TempBox <- renderValueBox({
+    valueBox(
+      paste0(round(mean((weerDat$Temp/10),na.rm = TRUE),2)), "Temperatuur", icon = icon("thermometer-three-quarters",lib = "font-awesome"),
+      color = "maroon"
+    )
+  })
+  output$RegenBox <- renderValueBox({
+    valueBox(
+      paste0(round(mean((weerDat$Neerslag), na.rm = TRUE),2)), "Regen", icon = icon("tint", lib = "glyphicon"),
+      color = "maroon"
+    )
   })
   output$timeline <- renderTimevis({
     timevis(loadData())
@@ -148,17 +170,23 @@ shinyApp(ui, server)
 
 # TO DO
 # weerdata downl+ visualiseren
-# output$histo, wat moet hier komen te staan
-# opmaak sidebar(breder maken?)
-tests <- DATA %>% filter(Date<="2016-06-02") %>% filter(Time<=15)
-fn <- fivenum(tests$no2a)
-jitwid <- position_jitter(0.5)
-ggplot(data=tests, mapping = aes(x = 0))+
-  geom_boxplot(aes(y=no2a))+
-  coord_flip()
-ggplot(data=tests, mapping = aes(x = 0))+
-  geom_boxplot(aes(y=pm10))+
-  coord_flip()
+
+
+# tests <- DATA %>% filter(Date<="2016-06-02") %>% filter(Time<=15)
+# fn <- fivenum(tests$no2a)
+# jitwid <- position_jitter(0.5)
+# ggplot(data=tests, mapping = aes(x = 0))+
+#   geom_boxplot(aes(y=no2a))+
+#   coord_flip()
+# ggplot(data=tests, mapping = aes(x = 0))+
+#   geom_boxplot(aes(y=pm10))+
+#   coord_flip()
 # TODODO
 # 3 niveaus - basic dash, complex dash, model voor drift (eindproducten)
 #
+# 
+# output$NOXplot <- renderPlotly({
+#   p <- plot_ly(plotly::wind, t = ~werDat()$Windrichting, r = ~(werDat()$Windsnelheid/10),
+#                type = 'area',color=I("Darkred"))
+#   layout(p, radialaxis = list(ticksuffix="m/s"),orientation = 270)
+# })
