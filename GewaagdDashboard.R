@@ -31,6 +31,16 @@ weerDat <- read.csv("weerDat.csv")
 weerDat$YYYYMMDD <- as.Date(as.character(weerDat$YYYYMMDD), format="%Y%m%d")
 colnames(weerDat) <- c("STN","Date","Time","Windrichting","Windsnelheid","Temp",
                        "NeerslagDuur","Neerslag","Regen","Sneeuw")
+weerDat$direct <- factor(sapply(weerDat$Windrichting, function(x){
+  if(is.na(x)){return(NA)}
+  if(x<=45|x>=315){return("Noord")}
+  else if(x<=135&&x>45){return("Oost")}
+  else if(x<=225&&x>135){return("Zuid")}
+  else if(x<=315&&x>225){return("West")}
+  else if(x==0){return("Windstil")}
+  else if(x==990){return("Veranderlijk")}
+}),levels=c("Noord","Oost","Zuid","West","Windstil","Veranderlijk"))
+weerDat$Neerslag[weerDat$Neerslag==-1]<-0
 write.csv(weerDat, "weerdata.csv", row.names=FALSE)
 DATA <- read.csv("sensormeasures.csv")
 DATA <- DATA[DATA$message=="",]
@@ -76,30 +86,54 @@ ui <- dashboardPage(
           mainPanel(
             verticalLayout(
               splitLayout(
-                valueBoxOutput("WindRBox",width="25%"),
-                valueBoxOutput("WindKBox",width="25%"),
-                valueBoxOutput("TempBox",width="25%"),
-                valueBoxOutput("RegenBox",width="25%")),
-              leafletOutput("leaf"),
+                valueBoxOutput("WindRBoxBA",width="25%"),
+                valueBoxOutput("WindKBoxBA",width="25%"),
+                valueBoxOutput("TempBoxBA",width="25%"),
+                valueBoxOutput("RainBoxBA",width="25%")),
+              leafletOutput("leafBA"),
               timevisOutput("timeline")
               )
           ),
        sidebarPanel(
          verticalLayout(
-          sliderInput("slider", "Size of Dot:", 1, 10, 1),
-          dateRangeInput("ana", "Kies periode:",
-                             start = as.Date("2016-06-01"), end= as.Date("2016-06-02")),
-          sliderInput("time", "Tijdlijn",
-                          min = 0, max = 24, 
-                          value = c(0,24), step=1,
-                          animate = animationOptions(loop = TRUE, interval = 1)),
-          tags$textarea(id="foo", rows=3, cols=40, 
+          selectInput("sliderBA", "Size of Dot:", 1, 10, 1),
+          dateInput("anaBA", "Kies datum:", value = as.Date("2016-06-02"), language = "nl",
+                             min = as.Date("2016-06-01"),max = as.Date("2016-08-31")),
+          sliderInput("timeBA", "Tijdlijn",
+                          min = 1, max = 24, 
+                          value = 12, step=1,
+                          animate = animationOptions(loop = TRUE, interval = 10)),
+          tags$textarea(id="fooBA", rows=3, cols=40, 
                             "Heeft u iets waargenomen? Plaats het in de tijdlijn!"),
-          actionButton("readCom",label="Plaats opmerking")
+          actionButton("readComBA",label="Plaats opmerking")
        )
       )
     )
-),tabItem(tabName="Advanced",fluidPage()),
+),
+tabItem(tabName="Advanced",
+          sidebarLayout(
+            mainPanel(
+              verticalLayout(
+                splitLayout(
+                  valueBoxOutput("WindRBox",width="25%"),
+                  valueBoxOutput("WindKBox",width="25%"),
+                  valueBoxOutput("TempBox",width="25%"),
+                  valueBoxOutput("RegenBox",width="25%"))
+              )
+            ),
+            sidebarPanel(
+              verticalLayout(
+                sliderInput("slider", "Size of Dot:", 1, 10, 1),
+                dateRangeInput("ana", "Kies periode:",
+                               start = as.Date("2016-06-01"), end= as.Date("2016-06-02")),
+                sliderInput("time", "Tijdlijn",
+                            min = 1, max = 24, 
+                            value = c(1,24), step=1,
+                            animate = animationOptions(loop = TRUE, interval = 1))
+              )
+            )
+          )
+),
 tabItem(tabName="MathFACT",fluidPage()),
 tabItem(tabName="Feedback",fluidPage()))))
 
@@ -112,13 +146,19 @@ server <- function(input, output, session) {
   }
   selDAT <- function(){
     return(
-      DATA %>% filter(Date>=input$ana[1]) %>% filter(Date<=input$ana[2]) %>% 
-        filter(Time>=input$time[1]) %>% filter(Time<=input$time[2]))
-  }
+      DATA %>% filter(Date==input$anaBA) %>% filter(Time==input$timeBA))
+      }
   werDat <- function(){
     return(
-      weerDat %>% filter(Date>=input$ana[1]) %>% filter(Date<=input$ana[2]) %>% 
-        filter(Time>=input$time[1]) %>% filter(Time<=input$time[2]))
+      weerDat %>% filter(Date==input$anaBA) %>% filter(Time==input$timeBA))
+  }
+  selDATAD <- function(){
+    return(
+      DATA %>% filter(Date==input$ana) %>% filter(Time==input$time))
+  }
+  werDatAD <- function(){
+    return(
+      weerDat %>% filter(Date==input$ana) %>% filter(Time==input$time))
   }
   comText <- eventReactive(input$readCom, {
     input$foo
@@ -131,35 +171,59 @@ server <- function(input, output, session) {
     ggplot(data=werDat())+
       geom_point(aes(x=paste(Date,Time),y=Temp))
   })
-  output$leaf <- renderLeaflet({
+  output$leafBA <- renderLeaflet({
       leaflet(selDAT()) %>%
       addTiles() %>%
-      addCircles(radius = ~temp*input$slider, weight = 1, color = "Darkred") %>%
+      addMarkers(icon=icon("location-arrow", lib = "font-awesome")) %>%
       fitBounds(~min(long), ~min(lat), ~max(long), ~max(lat))
   })
   output$WindRBox <- renderValueBox({
     valueBox(
-      paste0(round(mean((weerDat$Windrichting/10), na.rm = TRUE),2)), "Windrichting", icon = icon("direction", lib = "glyphicon"),
-      color = "maroon"
-    )
+      paste0(werDat()$direct), "Windrichting",
+      icon = icon("location-arrow", lib = "font-awesome"),
+      color = "blue")
   })
   output$WindKBox <- renderValueBox({
     valueBox(
-      paste0(round(mean((weerDat$Windsnelheid/10), na.rm = TRUE),2)), "Windkracht", icon = icon("f0b2", lib = "font-awesome"),
-      color = "maroon"
-    )
+      paste0(round(mean((werDat()$Windsnelheid/10), na.rm = TRUE),2)), "Windkracht",
+      icon = icon("fa", lib = "font-awesome"),
+      color = "blue")
   })
   output$TempBox <- renderValueBox({
     valueBox(
-      paste0(round(mean((weerDat$Temp/10),na.rm = TRUE),2)), "Temperatuur", icon = icon("thermometer-three-quarters",lib = "font-awesome"),
-      color = "maroon"
-    )
+      paste0(round(mean((werDat()$Temp/10),na.rm = TRUE),2)), "Temperatuur",
+      icon = icon("thermometer-three-quarters"),
+      color = "blue")
   })
   output$RegenBox <- renderValueBox({
     valueBox(
-      paste0(round(mean((weerDat$Neerslag), na.rm = TRUE),2)), "Regen", icon = icon("tint", lib = "glyphicon"),
-      color = "maroon"
-    )
+      paste0(round(mean((werDat()$Neerslag), na.rm = TRUE),2)), "Regen",
+      icon = icon("tint", lib = "glyphicon"),
+      color = "blue")
+  })
+  output$WindRBoxBA <- renderValueBox({
+    valueBox(
+      paste0(werDat()$direct), "Windrichting",
+      icon = icon("location-arrow", lib = "font-awesome"),
+      color = "blue")
+  })
+  output$WindKBoxBA <- renderValueBox({
+    valueBox(
+      paste0(werDat()$Windsnelheid), "Windkracht",
+      icon = icon("fa", lib = "font-awesome"),
+      color = "blue")
+  })
+  output$TempBoxBA <- renderValueBox({
+    valueBox(
+      paste0(werDat()$Temp), "Temperatuur",
+      icon = icon("thermometer-three-quarters"),
+      color = "blue")
+  })
+  output$RainBoxBA <- renderValueBox({
+    valueBox(
+      paste0(werDat()$Neerslag), "Regen",
+      icon = icon("tint", lib = "glyphicon"),
+      color = "blue")
   })
   output$timeline <- renderTimevis({
     timevis(loadData())
@@ -169,22 +233,10 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 
 # TO DO
-# weerdata downl+ visualiseren
+# proxy inbouwen voor leaflet voor beter plotten
 
 
-# tests <- DATA %>% filter(Date<="2016-06-02") %>% filter(Time<=15)
-# fn <- fivenum(tests$no2a)
-# jitwid <- position_jitter(0.5)
-# ggplot(data=tests, mapping = aes(x = 0))+
-#   geom_boxplot(aes(y=no2a))+
-#   coord_flip()
-# ggplot(data=tests, mapping = aes(x = 0))+
-#   geom_boxplot(aes(y=pm10))+
-#   coord_flip()
-# TODODO
-# 3 niveaus - basic dash, complex dash, model voor drift (eindproducten)
-#
-# 
+# windroos plot:
 # output$NOXplot <- renderPlotly({
 #   p <- plot_ly(plotly::wind, t = ~werDat()$Windrichting, r = ~(werDat()$Windsnelheid/10),
 #                type = 'area',color=I("Darkred"))
