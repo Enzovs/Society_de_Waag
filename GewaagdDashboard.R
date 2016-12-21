@@ -1,4 +1,4 @@
-# setwd("C:/Users/Win7/Desktop/HVA TWK/JAAR 3/Minor/Project de waag")
+setwd("C:/Users/Win7/Desktop/HVA TWK/JAAR 3/Minor/Project de waag")
 library(lubridate)
 library(shiny)
 library(shinydashboard)
@@ -10,6 +10,7 @@ library(dplyr)
 library(leaflet)
 library(timevis)
 library(plotly)
+library(htmltools)
 # STN      LON(east)   LAT(north)     ALT(m)  NAME
 # 240:         4.774       52.301      -4.40  SCHIPHOL
 # 
@@ -31,6 +32,16 @@ weerDat <- read.csv("weerDat.csv")
 weerDat$YYYYMMDD <- as.Date(as.character(weerDat$YYYYMMDD), format="%Y%m%d")
 colnames(weerDat) <- c("STN","Date","Time","Windrichting","Windsnelheid","Temp",
                        "NeerslagDuur","Neerslag","Regen","Sneeuw")
+weerDat$direct <- factor(sapply(weerDat$Windrichting, function(x){
+  if(is.na(x)){return(NA)}
+  if(x<=45|x>=315 && x!=0 && x!=990){return("Noord")}
+  else if(x<=135&&x>45){return("Oost")}
+  else if(x<=225&&x>135){return("Zuid")}
+  else if(x<=315&&x>225){return("West")}
+  else if(x==0){return("Stil")}
+  else if(x==990){return("Wissel")}
+}),levels=c("Noord","Oost","Zuid","West","Stil","Wissel"))
+weerDat$Neerslag[weerDat$Neerslag==-1]<-0
 write.csv(weerDat, "weerdata.csv", row.names=FALSE)
 DATA <- read.csv("sensormeasures.csv")
 DATA <- DATA[DATA$message=="",]
@@ -46,119 +57,235 @@ DATA <- DATA %>%
             pm25=mean(pm25, na.rm=TRUE),no2a=mean(no2a, na.rm=TRUE),no2b=mean(no2b, na.rm=TRUE),
             humidity=mean(humidity, na.rm=TRUE))
 DATA <- DATA %>% filter(count>=36)
-SensLoc <- read.csv("Senslonglat.csv")
-colnames(SensLoc) <- c("id","lat","long")
+SensLoc <- read.csv2("Senslonglat.csv",header=FALSE,sep=";",stringsAsFactors = FALSE)
+colnames(SensLoc) <- c("id","lat","long","Adress")
 DATA <- merge(DATA,SensLoc,by="id")
+SensLoc$id <- as.factor(SensLoc$id)
 
-# info <- data.frame(content=NULL,start=NULL,end=NULL)
+
+
+FINALdata <- read.csv("./Github DATA/urbanairq_no2_final.csv")
+FINALdata <- separate(FINALdata, col= "localTime",into=c("Date","Time"),sep=" ",remove=FALSE)
+FINALdata$Time <- format(trunc(strptime(FINALdata$Time, format="%H:%M:%S"), units="hours"),
+                    format="%H")
+FINALdata$Date <- ymd(FINALdata$Date)
+FINALdata$Time <- as.numeric(FINALdata$Time)
+
 write.csv(DATA,"DATAtot.csv",row.names=FALSE)
 DATA <- read.csv("DATAtot.csv")
 weerDat <- read.csv("weerdata.csv")
 DATA$Date <- ymd(DATA$Date)
 weerDat$Date <- ymd(weerDat$Date)
 DATA$id <- as.factor(DATA$id)
-for(i in 1:length(levels(DATA$id))){
-  assign(paste("df",i,sep=""),DATA[DATA$id==levels(DATA$id)[i],])
-}
+TOTALdata <- merge(DATA,FINALdata[,c(2,3,4,5,6,7)],by=c("Date","Time"),all.x=T)
+write.csv(TOTALdata,"TOTALdata.csv",row.names=F)
+FINALdata <- read.csv("TOTALdata.csv")
+# for(i in 1:length(levels(DATA$id))){
+#   assign(paste("df",i,sep=""),DATA[DATA$id==levels(DATA$id)[i],])
+# }
 
 ui <- dashboardPage(
   dashboardHeader(title = "Gewaagd Dashboard", titleWidth = 250),
   dashboardSidebar(sidebarMenu(
     menuItem("Dashboard", tabName = "Overview", icon = icon("dashboard")),
-    menuItem("nox", icon = icon("th"), tabName = "NO2",
-             badgeLabel = "new", badgeColor = "green"),
-    menuItem("Fijnstof", tabName = "PM", icon = icon("dashboard")),
-    menuItem("MathWizz", tabName = "MathFAQ", icon = icon("dashboard")))),
-  dashboardBody(    
+    menuItem("Advanced", tabName = "Advanced", icon = icon("th")),
+    menuItem("MathFact", tabName = "MathFACT", icon = icon("dashboard")),
+    menuItem("Feedback", tabName = "Feedback", icon = icon("dashboard")))),
+  dashboardBody( 
+    #####BASIC PAGE------
     tabItems(
       tabItem(tabName="Overview",
-        sidebarLayout(fluid=FALSE,
-          mainPanel(width = 7,
+        fluidRow(splitLayout(
+          valueBoxOutput("WindRBoxBA",width="16.6%"),
+          valueBoxOutput("WindKBoxBA",width="16.6%"),
+          valueBoxOutput("TempBoxBA",width="16.6%"),
+          valueBoxOutput("RainBoxBA",width="16.6%"),
+          valueBoxOutput("NO2BoxBA",width="16.6%"),
+          valueBoxOutput("PMBoxBA",width="16.6%"))),
+        sidebarLayout(
+          mainPanel(
             verticalLayout(
-              plotOutput("weather"),
-              leafletOutput("leaf"),
-              timevisOutput("timeline")
-              )
+              leafletOutput("leafBA"))
           ),
-       sidebarPanel(width = 5,
+       sidebarPanel(
          verticalLayout(
-          sliderInput("slider", "Size of Dot:", 1, 10, 1),
-          dateRangeInput("ana", "Kies periode:",
-                             start = as.Date("2016-06-01"), end= as.Date("2016-06-02")),
-          sliderInput("time", "Tijdlijn",
-                          min = 0, max = 24, 
-                          value = c(0,24), step=1,
-                          animate = animationOptions(loop = TRUE, interval = 1)),
-          plotlyOutput("NOXplot"),
-          tags$textarea(id="foo", rows=3, cols=40, 
-                            "Heeft u iets waargenomen? Plaats het in de tijdlijn!"),
-          actionButton("readCom",label="Plaats opmerking")
+          selectInput("stofBA", "Toon stof:", 
+                      choices = list("StikstofDioxide","Fijnstof 10","Fijnstof 2,5")),
+          dateInput("anaBA", "Kies datum:", value = as.Date("2016-06-02"), language = "nl",
+                             min = as.Date("2016-06-01"),max = as.Date("2016-08-31")),
+          sliderInput("timeBA", "Tijdlijn",
+                          min = 1, max = 24, 
+                          value = 12, step=1,
+                          animate = animationOptions(loop = TRUE, interval = 10))
        )
       )
     )
-),tabItem(tabName="NO2",fluidPage()),
-tabItem(tabName="PM",fluidPage()),
-tabItem(tabName="MathFAQ",fluidPage()))))
+),
+####ADVANCED PAGE------
+tabItem(tabName="Advanced",
+          sidebarLayout(
+            mainPanel(
+              verticalLayout(
+                timevisOutput("weatherlineAD"),
+                plotlyOutput("PLYtabAD"),
+                timevisOutput("timelineAD"))
+            ),
+            sidebarPanel(
+              verticalLayout(
+                selectInput("stofAD", "Toon stof:", 
+                            choices = list("StikstofDioxide","Fijnstof 10","Fijnstof 2,5")),
+                dateRangeInput("ana", "Kies periode:",
+                               start = as.Date("2016-06-01"), end= as.Date("2016-06-02")),
+                sliderInput("time", "Tijdlijn",
+                            min = 1, max = 24, 
+                            value = c(1,24), step=1,
+                            animate = animationOptions(loop = TRUE, interval = 1)),
+                checkboxGroupInput("weekdays", "Selecteer dagen:",
+                                   choices=c("Maandag","Dinsdag","Woensdag","Donderdag",
+                                   "Vrijdag","Zaterdag","Zondag"),
+                                   selected=c("Maandag","Dinsdag","Woensdag","Donderdag",
+                                              "Vrijdag","Zaterdag","Zondag")),
+              tags$textarea(id="fooBA", rows=3, cols=40, 
+                            "Heeft u iets waargenomen? Plaats het in de tijdlijn!"),
+              actionButton("readComBA",label="Plaats opmerking"))
+            )
+          )
+),
+#### MATHFACTS PAGE-----
+tabItem(tabName="MathFACT",fluidPage()),
+#### FEEDBACK PAGE--------
+tabItem(tabName="Feedback",fluidPage()))))
 
 server <- function(input, output, session) {
-  loadData <- function() {
-    comdata <- read.csv("commDat.csv",stringsAsFactors = FALSE,header=TRUE,sep=";")
-    comdata$start <- as.Date(comdata$start)
-    comdata$end <- as.Date(comdata$end)
-    return(data.frame(comdata))
-  }
-  selDAT <- function(){
-    return(
-      DATA %>% filter(Date>=input$ana[1]) %>% filter(Date<=input$ana[2]) %>% 
-        filter(Time>=input$time[1]) %>% filter(Time<=input$time[2]))
-  }
-  werDat <- function(){
-    return(
-      weerDat %>% filter(Date>=input$ana[1]) %>% filter(Date<=input$ana[2]) %>% 
-        filter(Time>=input$time[1]) %>% filter(Time<=input$time[2]))
-  }
-  comText <- eventReactive(input$readCom, {
-    input$foo
+  ####FUNCTIONS------
+    loadData <- function() {
+      comdata <- read.csv("commDat.csv",stringsAsFactors = FALSE,header=TRUE,sep=";")
+      comdata$start <- as.Date(comdata$start)
+      comdata$end <- as.Date(comdata$end)
+      return(data.frame(comdata))
+    }
+    selDAT <- function(){
+      return(
+        DATA %>% filter(Date==input$anaBA) %>% filter(Time==input$timeBA))
+        }
+    werDat <- function(){
+      return(
+        weerDat %>% filter(Date==input$anaBA) %>% filter(Time==input$timeBA))
+    }
+    selSTOFba <- reactive({switch(input$stofBA,
+                                StikstofDioxide="no2a",
+                                `Fijnstof 10`="pm10",
+                                `Fijnstof 2,5`="pm25")})
+    selSTOFad <- reactive({switch(input$stofBA,
+                                StikstofDioxide="no2a",
+                                `Fijnstof 10`="pm10",
+                                `Fijnstof 2,5`="pm25")})
+    selDatAD <- function(){
+      return(
+        DATA %>% filter(Date==input$ana) %>% filter(Time==input$time))
+    }
+    werDatAD <- function(){
+      return(
+        weerDat %>% filter(Date==input$ana) %>% filter(Time==input$time))
+    }
+    comText <- eventReactive(input$readCom, {
+      input$foo
+      })
+    #####BASIC PAGE-----------
+    output$leafBA <- renderLeaflet({
+        leaflet() %>%
+        addProviderTiles("Stamen.TonerLite",
+                         options = providerTileOptions(noWrap = TRUE)) %>% 
+        fitBounds(4.866167, 52.35968, 4.908988, 52.37665)
     })
-  obs <- observe({    
-    cat(comText(),";",as.character(input$ana[1]),";",as.character(input$ana[2]),
-        '\n', file = "commDat.csv", append = TRUE)
-  })
-  output$weather <- renderPlot({
-    ggplot(data=werDat())+
-      geom_point(aes(x=paste(Date,Time),y=Temp))
-  })
-  output$leaf <- renderLeaflet({
-      leaflet(selDAT()) %>%
-      addTiles() %>%
-      addCircles(radius = ~temp*input$slider, weight = 1, color = "Darkred") %>%
-      fitBounds(~min(long), ~min(lat), ~max(long), ~max(lat))
-  })
-  output$NOXplot <- renderPlotly({
-    p <- plot_ly(plotly::wind, t = ~werDat()$Windrichting, r = ~(werDat()$Windsnelheid/10),
-                          type = 'area',color=I("Darkred"))
-    layout(p, radialaxis = list(ticksuffix="m/s"),orientation = 270)
-  })
-  output$timeline <- renderTimevis({
-    timevis(loadData())
-  })
-}
-
+    observe({
+      leafletProxy("leafBA",data=selDAT()) %>%
+        clearShapes() %>% clearPopups() %>%
+        addCircles(radius=~temp/10, fill=FALSE,
+                   popup=~htmlEscape(paste(id,"\n",no2a,"\n",pm10,"\n",temp,"\n")))
+    })
+    ###valueboxesBA----------
+    output$WindRBoxBA <- renderValueBox({
+      valueBox(
+        paste0(werDat()$direct), "Windrichting",
+        icon = icon("location-arrow", lib = "font-awesome"),
+        color = "blue")
+    })
+    output$WindKBoxBA <- renderValueBox({
+      valueBox(
+        paste0(werDat()$Windsnelheid/10," m/s"), "Windkracht",
+        icon = icon("fa", lib = "font-awesome"),
+        color = "blue")
+    })
+    output$TempBoxBA <- renderValueBox({
+      valueBox(
+        paste0(werDat()$Temp/10," °C"), "Temperatuur",
+        icon = icon("thermometer-three-quarters"),
+        color = "blue")
+    })
+    output$RainBoxBA <- renderValueBox({
+      valueBox(
+        paste0(werDat()$Neerslag," mm"), "Regen",
+        icon = icon("tint", lib = "glyphicon"),
+        color = "blue")
+    })
+    output$NO2BoxBA <- renderValueBox({
+      valueBox(
+        paste0(round(selDAT()$no2a,2)," ug/m3"), "Stikstof",
+        icon = icon("tint", lib = "glyphicon"),
+        color = "blue")
+    })
+    output$PMBoxBA <- renderValueBox({
+      valueBox(
+        paste0(round(selDAT()$pm10,2)," ug/m3"), "Fijnstof",
+        icon = icon("tint", lib = "glyphicon"),
+        color = "blue")
+    })
+    
+    ##### ADVANCED PAGE--------
+    #### valueboxesAD-----
+    output$WindRBox <- renderValueBox({
+      valueBox(
+        paste0(werDat()$direct), "Windrichting",
+        icon = icon("location-arrow", lib = "font-awesome"),
+        color = "blue")
+    })
+    output$WindKBox <- renderValueBox({
+      valueBox(
+        paste0(round(mean((werDat()$Windsnelheid/10), na.rm = TRUE),2)), "Windkracht",
+        icon = icon("fa", lib = "font-awesome"),
+        color = "blue")
+    })
+    output$TempBox <- renderValueBox({
+      valueBox(
+        paste0(round(mean((werDat()$Temp/10),na.rm = TRUE),2)), "Temperatuur",
+        icon = icon("thermometer-three-quarters"),
+        color = "blue")
+    })
+    output$RegenBox <- renderValueBox({
+      valueBox(
+        paste0(round(mean((werDat()$Neerslag), na.rm = TRUE),2)), "Regen",
+        icon = icon("tint", lib = "glyphicon"),
+        color = "blue")
+    })
+    #### timevissesAD------
+    output$weatherlineAD <- renderTimevis({
+      timevis()
+    })
+    output$timelineAD <- renderTimevis({
+      timevis(loadData())
+    })
+    ### plotlyAD met tabs----
+    output$PLYtabAD <- renderPlotly({
+      plot_ly()
+    })
+  }
+  
 shinyApp(ui, server)
 
-# TO DO
-# weerdata downl+ visualiseren
-# output$histo, wat moet hier komen te staan
-# opmaak sidebar(breder maken?)
-tests <- DATA %>% filter(Date<="2016-06-02") %>% filter(Time<=15)
-fn <- fivenum(tests$no2a)
-jitwid <- position_jitter(0.5)
-ggplot(data=tests, mapping = aes(x = 0))+
-  geom_boxplot(aes(y=no2a))+
-  coord_flip()
-ggplot(data=tests, mapping = aes(x = 0))+
-  geom_boxplot(aes(y=pm10))+
-  coord_flip()
-# TODODO
-# 3 niveaus - basic dash, complex dash, model voor drift (eindproducten)
-#
+# windroos plot:
+# output$NOXplot <- renderPlotly({
+#   p <- plot_ly(plotly::wind, t = ~werDat()$Windrichting, r = ~(werDat()$Windsnelheid/10),
+#                type = 'area',color=I("Darkred"))
+#   layout(p, radialaxis = list(ticksuffix="m/s"),orientation = 270)
+# })
