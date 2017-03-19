@@ -20,3 +20,5 @@ p3. Expertise pagina waar de modellering (voorspelmodel voor de NO2 waarde) met 
 
 Het script "Datacleaner.R" bevat de bewerkingen om de data schoon te maken, te filteren en te analyseren. 
 Ook de verschillende bekeken voorspelmodellen en hun validatie staan in dit script.
+
+De overige files in de directory zijn ondersteunende files voor het dashboard en de datacleaning.
