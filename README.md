@@ -6,6 +6,7 @@ De hieruit voortgekomen data is als input gebruikt voor het project van de HvA.
 
 De data is open en voor iedereen toegankelijk op:
 https://github.com/waagsociety/making-sensor
+
 Zie ook:
 https://waag.org/en/project/urban-airq
 
